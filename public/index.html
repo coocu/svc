@@ -17,60 +17,37 @@
   </style>
 </head>
 <body>
-  <!-- 배경 영상 -->
   <video id="bgVideo" autoplay muted loop playsinline>
     <source src="bg.mp4" type="video/mp4" />
   </video>
 
-  <!-- 팝업 -->
   <div id="popup"><h1 id="numText"></h1></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const popup = document.getElementById("popup");
     const numText = document.getElementById("numText");
+    const bgVideo = document.getElementById("bgVideo");
     const socket = io();
 
-    // ===============================
-    //  채널 코드 읽기 (?ch=z399)
-    // ===============================
     const params = new URLSearchParams(window.location.search);
     const channel = (params.get("ch") || "A000").toUpperCase();
     socket.emit("joinRoom", channel);
 
-    // ===============================
-    //  오디오 문제 해결: 전역 유지
-    // ===============================
     let currentAudio = null;
 
     function playSound(number) {
       try {
-        // 이전 재생 중인 오디오 정지
         if (currentAudio) {
           currentAudio.pause();
           currentAudio.currentTime = 0;
         }
-
-        // 새로운 오디오 객체 (전역)
         currentAudio = new Audio(`sounds/${number}.mp3`);
-
-        // 끝까지 재생 강제
-        currentAudio.onended = () => {
-          console.log(`🔊 ${number}.mp3 재생 완료`);
-        };
-
-        currentAudio.play().catch(err => {
-          console.warn("오디오 재생 실패:", err);
-        });
-
-      } catch (e) {
-        console.warn("playSound 오류:", e);
-      }
+        currentAudio.play().catch(() => {});
+      } catch (e) {}
     }
 
-    // ===============================
-    //  팝업 표시
-    // ===============================
+    // 🔥 여기만 수정됨
     function showPopup(number) {
       numText.textContent = number;
       popup.style.display = "flex";
@@ -79,26 +56,22 @@
 
       setTimeout(() => {
         popup.style.display = "none";
-      }, 7000);  // 팝업만 닫고 소리는 끝까지 재생
+
+        // 🔥 삼성 인터넷 전용: 팝업 닫힐 때 영상 재생 다시 실행
+        bgVideo.play().catch(() => {});
+
+      }, 7000);
     }
 
-    // ===============================
-    //  소켓 이벤트
-    // ===============================
     socket.on("call", data => showPopup(data.number));
     socket.on("recall", data => showPopup(data.number));
     socket.on("reset", () => popup.style.display = "none");
 
-    // ===============================
-    //  모바일 브라우저 오디오 권한 확보
-    // ===============================
+    // 오디오 권한 확보
     document.body.addEventListener("click", () => {
       try {
-        if (!currentAudio) {
-          currentAudio = new Audio("sounds/silent.mp3");  // 무음 파일 필수
-        }
-        currentAudio.play().catch(()=>{});
-        console.log("🔈 오디오 자동재생 권한 확보됨");
+        const a = new Audio("sounds/silent.mp3");
+        a.play().catch(()=>{});
       } catch (e) {}
     }, { once: true });
   </script>

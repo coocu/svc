@@ -14,6 +14,7 @@
   </style>
 </head>
 <body>
+
   <video id="bgVideo" autoplay muted loop playsinline>
     <source src="bg.mp4" type="video/mp4" />
   </video>
@@ -28,45 +29,66 @@
     const socket = io();
 
     // -------------------------------------------
-    //  🔥 삼성인터넷 재생 차단 해결용 코드
+    //  🔥 오디오 자동재생 정책 강제 우회 (삼성인터넷 전용 완전버전)
     // -------------------------------------------
-    function forcePlay() {
-      bgVideo.muted = true;
-      bgVideo.play().catch(() => {});
+    let audioUnlocked = false;
+
+    function unlockAudio() {
+      if (audioUnlocked) return;
+
+      // 무음 mp3을 실제로 재생해야 권한이 해제됨
+      const silent = new Audio("sounds/silent.mp3");  // ⚠️ silent.mp3 파일 하나 필요함 (0.1초 무음)
+      silent.volume = 0;
+      silent.play()
+        .then(() => {
+          audioUnlocked = true;
+          console.log("🔈 오디오 자동재생 권한 해제됨");
+
+          // 백그라운드 영상도 한번 강제 실행
+          bgVideo.muted = true;
+          bgVideo.play().catch(() => {});
+        })
+        .catch(() => {});
     }
 
-    // 첫 화면터치 → 오디오/비디오 권한 해제
-    document.body.addEventListener("click", () => {
-      forcePlay();
-    }, { once:true });
+    // 첫 터치에서만 실행
+    document.body.addEventListener("click", unlockAudio, { once:true });
 
-    // 영상이 멈추면 자동 재시도(삼성브라우저 전용 해결)
+    // 삼성인터넷에서 영상 멈춤 버그 방지
     setInterval(() => {
       if (bgVideo.paused) {
-        forcePlay();
+        bgVideo.play().catch(()=>{});
       }
     }, 1500);
     // -------------------------------------------
 
 
-    // URL에서 채널코드 읽기
-    const params = new URLSearchParams(window.location.search);
-    const channel = (params.get("ch") || "A000").toUpperCase();
-    socket.emit("joinRoom", channel);
-
-    // 사운드
+    // -------------------------------------------
+    //  🔔 호출 소리 재생 함수 (권한 해제 후에는 100% 재생됨)
+    // -------------------------------------------
     function playSound(number) {
-      const audio = new Audio(`sounds/${number}.mp3`);
-      audio.play().catch(()=>{});
-    }
+      if (!audioUnlocked) unlockAudio(); // 혹시라도 실행 안됐으면 강제발동
 
-    // 팝업
+      const audio = new Audio(`sounds/${number}.mp3`);
+      audio.play().catch(() => {
+        console.warn("🔇 오디오 재생 실패 (권한 미해제)");
+      });
+    }
+    // -------------------------------------------
+
+
+    // 팝업 함수
     function showPopup(number) {
       numText.textContent = number;
       popup.style.display = "flex";
       playSound(number);
       setTimeout(() => popup.style.display = "none", 7000);
     }
+
+    // URL 채널 코드
+    const params = new URLSearchParams(window.location.search);
+    const channel = (params.get("ch") || "A000").toUpperCase();
+    socket.emit("joinRoom", channel);
 
     socket.on("call", data => showPopup(data.number));
     socket.on("recall", data => showPopup(data.number));

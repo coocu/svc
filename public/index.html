@@ -6,93 +6,101 @@
   <style>
     html, body {margin:0;padding:0;overflow:hidden;background:black;height:100%;width:100%;}
     video {position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0;}
-    #popup {position:fixed;top:0;left:0;width:100%;height:100%;
-      background:rgba(0,0,0,0.5);display:none;justify-content:center;align-items:center;
-      z-index:1;color:white;text-align:center;}
+    #popup {
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.5);
+      display:none;justify-content:center;align-items:center;
+      z-index:1;color:white;text-align:center;
+    }
     #popup h1 {font-size:400px;animation:blink 2s infinite;margin:0;}
     @keyframes blink {0%,50%,100%{opacity:1;}25%,75%{opacity:0.2;}}
   </style>
 </head>
 <body>
-
+  <!-- 배경 영상 -->
   <video id="bgVideo" autoplay muted loop playsinline>
     <source src="bg.mp4" type="video/mp4" />
   </video>
 
+  <!-- 팝업 -->
   <div id="popup"><h1 id="numText"></h1></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const popup = document.getElementById("popup");
     const numText = document.getElementById("numText");
-    const bgVideo = document.getElementById("bgVideo");
     const socket = io();
 
-    // -------------------------------------------
-    //  🔥 오디오 자동재생 정책 강제 우회 (삼성인터넷 전용 완전버전)
-    // -------------------------------------------
-    let audioUnlocked = false;
-
-    function unlockAudio() {
-      if (audioUnlocked) return;
-
-      // 무음 mp3을 실제로 재생해야 권한이 해제됨
-      const silent = new Audio("sounds/silent.mp3");  // ⚠️ silent.mp3 파일 하나 필요함 (0.1초 무음)
-      silent.volume = 0;
-      silent.play()
-        .then(() => {
-          audioUnlocked = true;
-          console.log("🔈 오디오 자동재생 권한 해제됨");
-
-          // 백그라운드 영상도 한번 강제 실행
-          bgVideo.muted = true;
-          bgVideo.play().catch(() => {});
-        })
-        .catch(() => {});
-    }
-
-    // 첫 터치에서만 실행
-    document.body.addEventListener("click", unlockAudio, { once:true });
-
-    // 삼성인터넷에서 영상 멈춤 버그 방지
-    setInterval(() => {
-      if (bgVideo.paused) {
-        bgVideo.play().catch(()=>{});
-      }
-    }, 1500);
-    // -------------------------------------------
-
-
-    // -------------------------------------------
-    //  🔔 호출 소리 재생 함수 (권한 해제 후에는 100% 재생됨)
-    // -------------------------------------------
-    function playSound(number) {
-      if (!audioUnlocked) unlockAudio(); // 혹시라도 실행 안됐으면 강제발동
-
-      const audio = new Audio(`sounds/${number}.mp3`);
-      audio.play().catch(() => {
-        console.warn("🔇 오디오 재생 실패 (권한 미해제)");
-      });
-    }
-    // -------------------------------------------
-
-
-    // 팝업 함수
-    function showPopup(number) {
-      numText.textContent = number;
-      popup.style.display = "flex";
-      playSound(number);
-      setTimeout(() => popup.style.display = "none", 7000);
-    }
-
-    // URL 채널 코드
+    // ===============================
+    //  채널 코드 읽기 (?ch=z399)
+    // ===============================
     const params = new URLSearchParams(window.location.search);
     const channel = (params.get("ch") || "A000").toUpperCase();
     socket.emit("joinRoom", channel);
 
+    // ===============================
+    //  오디오 문제 해결: 전역 유지
+    // ===============================
+    let currentAudio = null;
+
+    function playSound(number) {
+      try {
+        // 이전 재생 중인 오디오 정지
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        }
+
+        // 새로운 오디오 객체 (전역)
+        currentAudio = new Audio(`sounds/${number}.mp3`);
+
+        // 끝까지 재생 강제
+        currentAudio.onended = () => {
+          console.log(`🔊 ${number}.mp3 재생 완료`);
+        };
+
+        currentAudio.play().catch(err => {
+          console.warn("오디오 재생 실패:", err);
+        });
+
+      } catch (e) {
+        console.warn("playSound 오류:", e);
+      }
+    }
+
+    // ===============================
+    //  팝업 표시
+    // ===============================
+    function showPopup(number) {
+      numText.textContent = number;
+      popup.style.display = "flex";
+
+      playSound(number);
+
+      setTimeout(() => {
+        popup.style.display = "none";
+      }, 7000);  // 팝업만 닫고 소리는 끝까지 재생
+    }
+
+    // ===============================
+    //  소켓 이벤트
+    // ===============================
     socket.on("call", data => showPopup(data.number));
     socket.on("recall", data => showPopup(data.number));
     socket.on("reset", () => popup.style.display = "none");
+
+    // ===============================
+    //  모바일 브라우저 오디오 권한 확보
+    // ===============================
+    document.body.addEventListener("click", () => {
+      try {
+        if (!currentAudio) {
+          currentAudio = new Audio("sounds/silent.mp3");  // 무음 파일 필수
+        }
+        currentAudio.play().catch(()=>{});
+        console.log("🔈 오디오 자동재생 권한 확보됨");
+      } catch (e) {}
+    }, { once: true });
   </script>
 </body>
 </html>
